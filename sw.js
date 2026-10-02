@@ -1,8 +1,9 @@
-const CACHE_NAME = 'wenshu-shell-v0.2.4';
+const CACHE_NAME = 'wenshu-shell-v0.3.0-custom-providers';
 const APP_FILES = [
   './',
   './index.html',
   './app.js',
+  './providers.js',
   './styles.css',
   './manifest.webmanifest',
   './assets/wenshu-mark.svg',
@@ -39,6 +40,15 @@ self.addEventListener('fetch', event => {
         })
         .catch(() => caches.match('./index.html'))
     );
+    return;
+  }
+
+  // Refresh UI code when online; retain an offline fallback for installed apps.
+  if (/\.(js|css)$/.test(requestUrl.pathname)) {
+    event.respondWith(fetch(request).then(response => {
+      if (response.ok) { const copy = response.clone(); caches.open(CACHE_NAME).then(cache => cache.put(request, copy)); }
+      return response;
+    }).catch(() => caches.match(request)));
     return;
   }
 

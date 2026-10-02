@@ -1,0 +1,28 @@
+name: Build Windows desktop
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: node scripts/smoke-desktop.mjs
+      - run: ./scripts/accept-installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wenshu-Windows-x64
+          path: |
+            dist/0.5.0/*.exe
+            dist/0.5.0/*.zip
+          if-no-files-found: error

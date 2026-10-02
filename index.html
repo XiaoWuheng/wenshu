@@ -8,7 +8,6 @@
   <title>文枢 · 创作工作台</title>
   <link rel="icon" type="image/svg+xml" href="./assets/wenshu-mark.svg">
   <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
-  <link rel="manifest" href="./manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -29,7 +28,7 @@
         <button class="nav-item" data-page="profile"><span class="nav-icon">◉</span> 个人中心</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="privacy-card"><span class="privacy-icon">◉</span><div><strong>你的内容，由你掌握</strong><p>资料保存在当前浏览器</p></div><span class="online-dot"></span></div>
+        <div class="privacy-card"><span class="privacy-icon">◉</span><div><strong>你的内容，由你掌握</strong><p>资料保存在桌面工作区</p></div><span class="online-dot"></span></div>
         <button class="nav-item settings-button" id="settingsBtn"><span class="nav-icon">⚙</span> 设置与数据</button>
         <button class="user-row" id="profileQuickBtn" type="button"><span class="avatar" id="profileAvatar">创</span><span class="user-copy"><strong id="profileQuickName">本地创作者</strong><span>个人中心</span></span><span class="more-dots">↗</span></button>
       </div>
@@ -53,14 +52,27 @@
       <select id="projectType" name="type" class="text-input"><option>图文文章</option><option>短视频</option><option>播客</option><option>文化项目</option><option>自由创作</option></select>
       <label class="field-label" for="projectDescription">想做什么？ <span>选填</span></label>
       <textarea id="projectDescription" name="description" class="text-input textarea" placeholder="写下一句话，记录这个项目的起点。" rows="3"></textarea>
-      <div class="modal-note"><span>◉</span> 项目默认保存在你的浏览器中，不会自动上传。</div>
+      <div class="modal-note"><span>◉</span> 项目默认保存在本机数据目录，不会自动上传。</div>
       <div class="modal-actions"><button type="button" class="button secondary" data-close="projectDialog">再想想</button><button class="button primary" type="submit">创建项目 <span>→</span></button></div>
     </form>
   </dialog>
   <dialog id="settingsDialog" class="modal compact-modal">
     <div class="modal-top"><div><div class="eyebrow">工作空间</div><h2>设置与数据</h2></div><button class="modal-close" data-close="settingsDialog">×</button></div>
-    <div class="settings-block"><strong>本地数据</strong><p>项目和创作记录保存在当前浏览器的本地存储中。清除浏览器数据前，请先导出备份。</p><div class="settings-actions"><button class="button secondary" id="exportBackup">导出全部数据</button><label class="button secondary file-button">导入备份<input type="file" id="importBackup" accept="application/json" hidden></label><button class="button danger" id="clearData">清空本地数据</button></div></div>
-    <div class="settings-block"><strong>可选 AI 创作辅助</strong><p id="aiStatusText">正在检查本地 AI 服务……</p><span id="aiStatusBadge" class="status-pill neutral">检查中</span><p class="muted-paragraph">模型接口地址、模型名称和 API 密钥只配置在服务端的 .env 文件中，不会保存在浏览器里。每次生成前会单独确认发送内容。</p><label class="field-label" for="aiAccessToken">服务访问口令 <span>仅当前标签页</span></label><input id="aiAccessToken" class="text-input" type="password" autocomplete="off" placeholder="自托管服务器要求时填写"><div class="settings-actions"><button class="button secondary" id="saveAiAccessToken">临时保存口令</button><button class="button secondary" id="clearAiAccessToken">清除口令</button><button class="button secondary" id="refreshAiStatus">重新检查服务</button></div></div>
+    <div class="settings-block"><strong>本地数据</strong><p>项目和创作记录保存在指定的本机数据目录中。清除工作区数据前，请先导出备份。</p><div class="settings-actions"><button class="button secondary" id="exportBackup">导出全部数据</button><label class="button secondary file-button">导入备份<input type="file" id="importBackup" accept="application/json" hidden></label><button class="button danger" id="clearData">清空本地数据</button></div></div>
+    <div class="settings-block ai-settings"><div class="settings-title"><span class="eyebrow">AI CONNECTION</span><h3>为创作，选一位助手。</h3><p>先选择服务商，再使用对应的密钥连接。</p></div>
+      <div class="connection-status"><span id="aiStatusBadge" class="status-pill neutral">检查中</span><p id="aiStatusText" aria-live="polite">正在检查服务…</p></div>
+      <fieldset class="provider-fieldset"><legend><b>01</b> 选择服务商</legend><div id="providerChoices" class="provider-choices"></div></fieldset>
+      <div id="customProviderFields" class="setup-step" hidden>
+        <label class="field-label" for="aiBaseUrl">API 基础地址</label><input id="aiBaseUrl" class="text-input" type="url" placeholder="例如 http://localhost:11434/v1" maxlength="2048">
+        <small class="setup-help">填服务提供的基础地址（通常以 /v1 结尾），不要填写 /chat/completions。localhost 指运行文枢服务的电脑；内网 HTTP 为明文连接。</small>
+        <label class="field-label" for="aiApiStyle">接口格式</label><select id="aiApiStyle" class="text-input"><option value="chat-completions">Chat Completions（常用兼容格式）</option><option value="responses">Responses</option></select>
+        <label class="setup-help"><input id="aiNoAuth" type="checkbox"> 此服务无需 API Key（本地部署）</label>
+      </div>
+      <div class="setup-step"><label class="field-label" for="aiApiKey"><b>02</b> 输入对应的 API Key</label><div class="key-label"><span id="aiProviderHint"></span><a id="aiKeyLink" target="_blank" rel="noopener noreferrer">获取 API Key ↗</a></div><input id="aiApiKey" class="text-input" type="password" maxlength="500" autocomplete="off" placeholder="先选择服务商"><small class="setup-help">密钥保存在运行文枢的电脑上，由系统加密保护，不写入工作区备份。API 用量由服务商单独计费。</small></div>
+      <div class="setup-step"><label class="field-label" for="aiModelSelect"><b>03</b> 选择模型</label><input id="aiCustomModel" class="text-input" hidden list="customModelOptions" placeholder="填写模型 ID，例如 my-model 或组织/模型名" maxlength="160"><datalist id="customModelOptions"></datalist><small id="customModelHelp" class="setup-help" hidden>可直接填写部署时的模型 ID 并保存；也可读取模型获得建议。不支持模型列表的服务仍可手动配置。</small><div class="model-picker"><select id="aiModelSelect" class="text-input" disabled><option value="">填写 Key 后读取模型</option></select><button class="button secondary" id="loadAiModels">读取模型</button></div></div>
+      <p id="aiConfigNote" class="muted-paragraph" role="status" hidden></p><div class="settings-actions"><button class="button primary" id="saveAiConfig" disabled>保存配置</button><button class="button secondary" id="clearAiConfig">移除配置</button></div>
+      <details class="advanced-settings"><summary>远程服务访问口令</summary><label class="field-label" for="aiAccessToken">管理员提供的口令 · 仅当前标签页</label><input id="aiAccessToken" class="text-input" type="password" autocomplete="off" placeholder="本机使用无需填写"><div class="settings-actions"><button class="button secondary" id="saveAiAccessToken">保存口令</button><button class="button secondary" id="clearAiAccessToken">清除口令</button></div></details><button class="text-link" id="refreshAiStatus">重新检查服务 →</button>
+    </div>
   </dialog>
   <dialog id="searchDialog" class="modal search-modal"><div class="modal-top"><div><div class="eyebrow">快速查找</div><h2>搜索工作空间</h2></div><button class="modal-close" data-close="searchDialog">×</button></div><input class="text-input" id="searchInput" placeholder="搜索项目名称或描述…" /><div id="searchResults" class="search-results"></div></dialog>
   <dialog id="actionDialog" class="modal action-modal"></dialog>
@@ -85,16 +97,19 @@
       <div class="guide-grid">
         <section class="guide-step"><span>01</span><div><h3>建立项目</h3><p>点击“新建项目”，填写名称、创作类型和一句项目说明。也可以从“项目模板”开始：选择采访报道、短视频脚本、播客单集或文化活动记录，文枢会为项目准备一份初始提纲。模板可以继续修改。</p><small>适合：一个选题、一集节目、一条视频或一项文化记录各建一个项目。</small></div></section>
         <section class="guide-step"><span>02</span><div><h3>收好资料来源</h3><p>进入项目后打开“资料”，添加网页链接、采访记录、书目或其他参考来源。尽可能记下标题、作者、日期与链接，方便回到原始出处。资料会汇入“素材档案”，可以跨项目查看。</p><small>建议：一条资料记录对应一个可辨认的来源。</small></div></section>
-        <section class="guide-step"><span>03</span><div><h3>开始写稿</h3><p>在“稿件”中创建稿件并持续编辑。内容会自动保存到当前浏览器；可将稿件导出为 Markdown，方便交给其他编辑器继续处理。重要版本建议另行导出或备份。</p><small>可选 AI 助手需要单独启动 Node 服务；选中文字后可请求润色，发送前必须确认。也可点击页面顶部“AI 助手”入口，从当前项目开始使用。稿件本身始终先保存在本地。</small></div></section>
+        <section class="guide-step"><span>03</span><div><h3>开始写稿</h3><p>在“稿件”中创建稿件并持续编辑。内容会自动保存到桌面工作区；可将稿件导出为 Markdown，方便交给其他编辑器继续处理。点击“保存版本”或 Ctrl+S 保存单稿件版本，在“版本比较”中恢复。</p><small>AI 服务已内置于桌面版；选中文字后可请求润色，发送前必须确认。也可点击页面顶部“AI 助手”入口，从当前项目开始使用。稿件本身始终先保存在本地。</small></div></section>
         <section class="guide-step"><span>04</span><div><h3>逐条核验事实</h3><p>把需要确认的事实拆成具体陈述，关联一条或多条资料，再由你检查来源是否真正支持这句话。将状态改为“已找到来源”只代表找到了相关资料；只有完成判断后，才应标记“已核验”。发现冲突时记录下来并修改稿件。</p><small>关联来源不等于事实已核实，最终核验责任属于创作者。</small></div></section>
         <section class="guide-step"><span>05</span><div><h3>记录素材与授权</h3><p>登记图片、音乐、视频、字体或引文的来源、用途和署名要求。使用前核对授权范围、期限、地域与署名方式；信息不明确时先保留“待确认”，不要把登记动作当成获得授权。</p><small>授权结论由你根据原始许可或权利人回复确认。</small></div></section>
         <section class="guide-step"><span>06</span><div><h3>完成发布前检查</h3><p>打开项目的发布检查清单，按实际发布渠道逐项确认事实、引用、图片与音乐授权、隐私信息、标题和格式。发布清单是提醒工具，不会自动判断稿件是否合规或准确。</p><small>不同平台与作品类型的要求可能不同，请按具体场景核对。</small></div></section>
-        <section class="guide-step guide-wide"><span>07</span><div><h3>备份与数据边界</h3><p>项目内容默认保存在当前浏览器。侧栏底部的“设置与数据”可导出全部数据备份、导入备份，并查看 AI 服务连接状态或临时填写访问口令。清理浏览器数据前先导出备份；共享设备使用后，记得导出并清理本地数据。纯静态模式不会发送 AI 请求；启动 Node 服务并配置模型后，顶部“AI 助手”入口才可生成建议。云端同步尚未提供。</p></div></section>
+        <section class="guide-step guide-wide"><span>07</span><div><h3>存储、恢复与交付</h3><p>设置中的“更改数据目录”允许选择空文件夹，复制校验成功后重启，原目录保留。磁盘未连接时不会自动改用空目录。工作区与导入备份均支持 100 MB。最近 60 个工作区恢复点用于整体恢复；稿件最近 50 个版本用于单稿件恢复；误删记录可在回收站找回。建议定期导出外部备份到其他磁盘。</p><p>资料可导入 TXT、MD、DOCX、含文字 PDF 和字幕；扫描件需先 OCR。原文划选后保存页码或时间点，再插入稿件或关联核验项。AI 只发送输入框内容和勾选摘录，发送全文可预览，建议可逐段采用。改稿会使相关已核验陈述回到待核验。</p><p>发布页可预览排版并导出 Word、PDF 或 HTML，默认不附带内部资料。设置中的诊断导出不含正文、项目名、路径与密钥。模型调用仍需自己的 Key 或本地模型服务；云同步和多人协作不在当前范围内。</p></div></section>
       </div>
       <footer class="guide-footer"><span>文枢 · 创作者保留最终判断</span><button type="button" class="button primary" data-close-guide>开始创作 <span>→</span></button></footer>
     </div>
   </dialog>
   <div id="toast" class="toast" role="status"></div>
+  <script src="workspace-schema.js"></script>
+<script src="providers.js"></script>
   <script src="app.js"></script>
+<script src="desktop-ui.js"></script>
 </body>
 </html>

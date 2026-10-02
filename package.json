@@ -1,12 +1,78 @@
 {
   "name": "wenshu-creator-workspace",
-  "version": "0.2.4",
+  "version": "0.5.0",
   "private": false,
   "description": "本地优先的创作者资料、稿件与事实核验工作空间",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "start": "node server.mjs",
-    "dev": "node --watch server.mjs"
+    "start": "electron .",
+    "dev": "electron .",
+    "test": "node --test tests/*.test.mjs",
+    "desktop": "electron .",
+    "build:win": "electron-builder --win nsis zip --x64",
+    "build:dir": "electron-builder --win dir --x64",
+    "build:win:signed": "electron-builder --win nsis zip --x64 --config.win.signExecutable=true --config.forceCodeSigning=true"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "jsdom": "29.1.1"
+  },
+  "main": "desktop/main.mjs",
+  "author": "Wenshu contributors",
+  "license": "MIT",
+  "build": {
+    "appId": "org.wenshu.workspace",
+    "productName": "文枢",
+    "asar": true,
+    "directories": {
+      "output": "dist/0.5.0"
+    },
+    "files": [
+      "desktop/**/*",
+      "index.html",
+      "app.js",
+      "styles.css",
+      "providers.js",
+      "server.mjs",
+      "assets/**/*",
+      "package.json",
+      "LICENSE",
+      "desktop-ui.js",
+      "workspace-schema.js"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "assets/icon-512.png",
+      "artifactName": "Wenshu-${version}-win-${arch}.${ext}",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": false,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "artifactName": "Wenshu-${version}-Setup-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "docx": "9.8.1",
+    "mammoth": "1.13.0",
+    "marked": "18.0.14",
+    "pdfjs-dist": "6.3.289",
+    "sanitize-html": "2.18.0"
   }
 }
