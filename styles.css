@@ -86,3 +86,6 @@ body{background:var(--bg);color:var(--ink);font-family:'Noto Sans SC',sans-serif
   .sidebar-bottom{display:flex!important;align-items:center!important;gap:7px!important;margin:0 0 0 auto!important;width:auto!important}.sidebar-bottom .privacy-card,.sidebar-bottom .user-row{display:none!important}.sidebar-bottom .settings-button{width:auto!important;height:auto!important;margin:0!important;padding:7px 8px!important;border:1px solid #bd8b73!important;background:transparent!important;color:#9f4f37!important;font-size:10px!important}
   .main-area{margin:0!important;min-height:calc(100vh - 90px)!important}.topbar{height:48px!important;padding:0 16px!important}.view-root{padding:20px 16px 38px!important}
 }
+/* Keep the full mark inside its badge and preserve contrast on the dark rail. */
+.sidebar .brand-seal{width:44px!important;height:44px!important;padding:3px!important;display:grid!important;place-items:center!important;overflow:hidden!important;border:1px solid #c6b28f!important;border-radius:50%!important;background:#f6f2e9!important;flex:none!important}
+.sidebar .brand-seal img{display:block!important;width:36px!important;height:36px!important;max-width:100%!important;object-fit:contain!important}
