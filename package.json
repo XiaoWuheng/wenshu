@@ -1,6 +1,6 @@
 {
   "name": "wenshu-creator-workspace",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": false,
   "description": "本地优先的创作者资料、稿件与事实核验工作空间",
   "type": "module",
