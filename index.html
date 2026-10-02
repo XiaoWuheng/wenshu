@@ -26,11 +26,12 @@
         <button class="nav-item" data-page="projects"><span class="nav-icon">▤</span> 我的项目 <span class="nav-count" id="projectCount">0</span></button>
         <button class="nav-item" data-page="library"><span class="nav-icon">▧</span> 素材档案</button>
         <button class="nav-item" data-page="templates"><span class="nav-icon">▦</span> 项目模板</button>
+        <button class="nav-item" data-page="profile"><span class="nav-icon">◉</span> 个人中心</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="privacy-card"><span class="privacy-icon">◉</span><div><strong>你的内容，由你掌握</strong><p>资料保存在当前浏览器</p></div><span class="online-dot"></span></div>
         <button class="nav-item settings-button" id="settingsBtn"><span class="nav-icon">⚙</span> 设置与数据</button>
-        <div class="user-row"><div class="avatar">创</div><div class="user-copy"><strong>本地创作者</strong><span>个人工作空间</span></div><span class="more-dots">···</span></div>
+        <button class="user-row" id="profileQuickBtn" type="button"><span class="avatar" id="profileAvatar">创</span><span class="user-copy"><strong id="profileQuickName">本地创作者</strong><span>个人中心</span></span><span class="more-dots">↗</span></button>
       </div>
     </aside>
 
@@ -80,7 +81,7 @@
   <dialog id="guideDialog" class="guide-dialog" aria-labelledby="guideTitle">
     <div class="guide-top"><div class="guide-brand"><img src="assets/wenshu-mark.svg" alt=""><span>文枢 · 使用手册</span></div><button type="button" class="guide-close" data-close-guide aria-label="关闭使用指南">×</button></div>
     <div class="guide-content">
-      <header class="guide-intro"><div class="eyebrow">从灵感到发布，留下一条清楚的创作线索</div><h2 id="guideTitle">让每一步创作，<em>都有来处。</em></h2><p>文枢帮助你把项目、资料、稿件、核验和素材授权放进同一个创作脉络。它不会替你判断事实或代替你的表达。</p></header>
+      <header class="guide-intro"><div class="eyebrow">从灵感到发布，留下一条清楚的创作线索</div><h2 id="guideTitle">让每一步创作，<em>都有来处。</em></h2><p>文枢帮助你把项目、资料、稿件、核验和素材授权放进同一个创作脉络；“个人中心”可以编辑你的创作者身份和简介。它不会替你判断事实或代替你的表达。</p></header>
       <div class="guide-grid">
         <section class="guide-step"><span>01</span><div><h3>建立项目</h3><p>点击“新建项目”，填写名称、创作类型和一句项目说明。也可以从“项目模板”开始：选择采访报道、短视频脚本、播客单集或文化活动记录，文枢会为项目准备一份初始提纲。模板可以继续修改。</p><small>适合：一个选题、一集节目、一条视频或一项文化记录各建一个项目。</small></div></section>
         <section class="guide-step"><span>02</span><div><h3>收好资料来源</h3><p>进入项目后打开“资料”，添加网页链接、采访记录、书目或其他参考来源。尽可能记下标题、作者、日期与链接，方便回到原始出处。资料会汇入“素材档案”，可以跨项目查看。</p><small>建议：一条资料记录对应一个可辨认的来源。</small></div></section>

@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'wenshu.workspace.v1';
+const DEFAULT_PROFILE = {displayName:'本地创作者', role:'独立创作者', preferredChannel:'图文文章', bio:''};
 const todayLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
 const starterProjects = [
   { id: 'demo-tea', name: '巷口那间开了四十年的茶馆', type: '图文文章', description: '记录老街茶馆与街坊邻里的日常，写一篇关于城市记忆的深度特写。', status: '创作中', updatedAt: Date.now() - 1000 * 60 * 43, sources: [{id:'s1',title:'【虚构演示】街区历史档案',type:'演示记录',url:'',notes:'仅用于演示资料关联流程，不是真实来源；请替换为可查证的原始出处。'}], claims: [{id:'c1',text:'茶馆于1984年开业。',status:'待核验',sourceIds:[]},{id:'c2',text:'附近街区在2001年完成改造。',status:'已找到来源',sourceIds:['s1']}], assets: [{id:'a1',name:'老茶馆门头照片',kind:'图片',rights:'待确认',credit:'',source:'采访现场拍摄',location:'文章头图'}], drafts: [{id:'d1',title:'主稿 · 初稿',channel:'主稿',content:'清晨六点半，卷帘门刚刚升起，茶香就从巷子深处漫出来。\n\n这间茶馆开在老街转角。老板说，几十年来，桌椅换过几轮，来喝茶的人却总能叫出彼此的名字。\n\n【待补充：采访茶馆老板关于开店年份的原话】',updatedAt:Date.now()-1000*60*43}], checklist: [], published: false},
@@ -19,9 +20,9 @@ let aiServiceStatus = null;
 let aiSelectionRange = null;
 
 function loadState() {
-  try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) return JSON.parse(saved); }
+  try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) { const parsed=JSON.parse(saved); return {...parsed, profile:{...DEFAULT_PROFILE,...(parsed.profile||{})}}; } }
   catch (error) { console.warn('本地数据读取失败', error); }
-  return { projects: structuredClone(starterProjects), isDemo: true };
+  return { projects: structuredClone(starterProjects), isDemo: true, profile: {...DEFAULT_PROFILE} };
 }
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); setSaveLabel('已保存到本地'); }
@@ -161,17 +162,31 @@ function icon(type) { return ({'图文文章':'▤','短视频':'▷','播客':'
 function projectProgress(p) { const claims=p.claims||[], assets=p.assets||[], drafts=p.drafts||[]; const checks=[drafts.length>0, claims.length===0||claims.every(c=>c.status==='已核验'), assets.every(a=>a.rights!=='待确认'), (p.checklist||[]).length>0]; return Math.round(checks.filter(Boolean).length/checks.length*100); }
 function projectMetrics(p) { return `<div class="project-metrics"><span>▧ ${(p.sources||[]).length} 条资料</span><span>◌ ${(p.claims||[]).filter(c=>c.status!=='已核验').length} 项待核验</span><span>◈ ${(p.assets||[]).filter(a=>a.rights==='待确认').length} 项授权待补</span></div>`; }
 function render() {
+  const profile={...DEFAULT_PROFILE,...(state.profile||{})};
+  const profileName=document.getElementById('profileQuickName'),profileAvatar=document.getElementById('profileAvatar');
+  if(profileName)profileName.textContent=profile.displayName;
+  if(profileAvatar)profileAvatar.textContent=(profile.displayName||'创').slice(0,1);
   const root=document.getElementById('viewRoot');
   if(activeProjectId && getProject()) { renderProject(root,getProject()); }
   else if(activePage==='projects') renderProjects(root);
   else if(activePage==='library') renderLibrary(root);
   else if(activePage==='templates') renderTemplates(root);
+  else if(activePage==='profile') renderProfile(root);
   else renderHome(root);
   document.getElementById('projectCount').textContent=state.projects.length;
-  const current=activeProjectId ? getProject()?.name : ({home:'创作总览',projects:'我的项目',library:'素材档案',templates:'项目模板'})[activePage];
+  const current=activeProjectId ? getProject()?.name : ({home:'创作总览',projects:'我的项目',library:'素材档案',templates:'项目模板',profile:'个人中心'})[activePage];
   document.getElementById('breadcrumbCurrent').textContent=current||'创作总览';
   bindDynamicEvents();
 }
+function renderProfile(root) {
+  const profile={...DEFAULT_PROFILE,...(state.profile||{})};
+  const projectCount=state.projects.filter(p=>p.status!=='已归档').length;
+  const draftCount=state.projects.reduce((n,p)=>n+(p.drafts||[]).length,0);
+  const sourceCount=state.projects.reduce((n,p)=>n+(p.sources||[]).length,0);
+  const pendingCount=state.projects.reduce((n,p)=>n+(p.claims||[]).filter(c=>c.status!=='已核验').length,0);
+  root.innerHTML=`<div class="profile-page"><header class="profile-heading"><div><div class="eyebrow">创作者档案</div><h1>个人中心</h1><p>管理你的创作身份与工作偏好。资料仅保存在当前浏览器。</p></div><div class="profile-seal">${escapeHtml((profile.displayName||'创').trim().slice(0,1)||'创')}</div></header><div class="profile-layout"><section class="profile-card"><div class="profile-card-heading"><div><div class="eyebrow">个人资料</div><h2>介绍一下你自己</h2><p>这些信息用于整理个人工作空间，不会公开展示或自动发送给 AI。</p></div></div><form id="profileForm" class="profile-form"><label class="field-label" for="profileName">显示名称</label><input class="text-input" id="profileName" name="displayName" maxlength="40" value="${escapeHtml(profile.displayName)}" placeholder="例如：林间编辑" required><label class="field-label" for="profileRole">工作身份</label><select class="text-input" id="profileRole" name="role"><option ${profile.role==='独立创作者'?'selected':''}>独立创作者</option><option ${profile.role==='记者 / 编辑'?'selected':''}>记者 / 编辑</option><option ${profile.role==='自媒体创作者'?'selected':''}>自媒体创作者</option><option ${profile.role==='文化工作者'?'selected':''}>文化工作者</option><option ${profile.role==='播客 / 视频制作人'?'selected':''}>播客 / 视频制作人</option><option ${profile.role==='其他'?'selected':''}>其他</option></select><label class="field-label" for="profileChannel">常用创作类型</label><select class="text-input" id="profileChannel" name="preferredChannel"><option ${profile.preferredChannel==='图文文章'?'selected':''}>图文文章</option><option ${profile.preferredChannel==='短视频'?'selected':''}>短视频</option><option ${profile.preferredChannel==='播客'?'selected':''}>播客</option><option ${profile.preferredChannel==='文化项目'?'selected':''}>文化项目</option><option ${profile.preferredChannel==='自由创作'?'selected':''}>自由创作</option></select><label class="field-label" for="profileBio">个人简介 <span>选填</span></label><textarea class="text-input textarea" id="profileBio" name="bio" rows="4" maxlength="240" placeholder="记录你的创作方向、关注领域或工作方式">${escapeHtml(profile.bio)}</textarea><div class="profile-form-footer"><span>保存在此浏览器 · 不需要账号</span><button class="button primary" type="submit">保存个人资料</button></div></form></section><aside class="profile-aside"><section class="profile-card profile-summary"><div class="eyebrow">工作空间概览</div><h2>${escapeHtml(profile.displayName)}</h2><p>${escapeHtml(profile.role)} · ${escapeHtml(profile.preferredChannel)}</p><div class="profile-stats"><div><strong>${projectCount}</strong><span>进行中项目</span></div><div><strong>${draftCount}</strong><span>稿件</span></div><div><strong>${sourceCount}</strong><span>资料来源</span></div><div><strong>${pendingCount}</strong><span>待核验事实</span></div></div></section><section class="profile-card profile-links"><div class="eyebrow">工作空间设置</div><button type="button" data-profile-action="settings"><span>⚙</span><span><strong>设置与数据</strong><small>备份、导入、清理数据与 AI 服务连接</small></span><b>→</b></button><button type="button" data-page="projects"><span>▤</span><span><strong>我的项目</strong><small>管理选题、稿件和项目记录</small></span><b>→</b></button><button type="button" data-profile-action="ai"><span>✦</span><span><strong>AI 创作助手</strong><small>打开项目后从顶部入口使用</small></span><b>→</b></button><div class="profile-local-note">目前是本地个人空间，不提供账号登录、云端同步或多人协作。请定期导出备份。</div></section></aside></div></div>`;
+}
+function saveProfile(event){event.preventDefault();const data=new FormData(event.currentTarget);state.profile={displayName:String(data.get('displayName')||'').trim()||DEFAULT_PROFILE.displayName,role:data.get('role'),preferredChannel:data.get('preferredChannel'),bio:String(data.get('bio')||'').trim()};saveState();document.getElementById('profileQuickName').textContent=state.profile.displayName;document.getElementById('profileAvatar').textContent=state.profile.displayName.slice(0,1);render();toast('个人资料已保存在当前浏览器。');}
 function renderHome(root) {
   const pendingClaims=state.projects.reduce((n,p)=>n+(p.claims||[]).filter(c=>c.status!=='已核验').length,0);
   const pendingAssets=state.projects.reduce((n,p)=>n+(p.assets||[]).filter(a=>a.rights==='待确认').length,0);
@@ -224,10 +239,13 @@ function publishView(p) { const defaults=[['事实与引用已有来源或核验
 
 function bindDynamicEvents() {
   document.querySelectorAll('[data-action]').forEach(el=>el.addEventListener('click',handleAction));
+  document.querySelectorAll('[data-profile-action]').forEach(el=>el.addEventListener('click',()=>{if(el.dataset.profileAction==='settings')document.getElementById('settingsDialog').showModal();if(el.dataset.profileAction==='ai')toast('请先打开一个项目，再点击页面顶部的“AI 助手”。');}));
+  document.querySelectorAll('.profile-links [data-page="projects"]').forEach(el=>el.addEventListener('click',()=>setPage('projects')));
   document.querySelectorAll('[data-tab]').forEach(el=>el.addEventListener('click',()=>{activeProjectTab=el.dataset.tab;render();}));
   document.querySelectorAll('[data-project-filter]').forEach(el=>el.addEventListener('click',()=>{projectFilter=el.dataset.projectFilter;render();}));
   document.querySelectorAll('[data-project-sort]').forEach(el=>el.addEventListener('change',()=>{projectSort=el.value;render();}));
   document.querySelectorAll('[data-library-tab]').forEach(el=>el.addEventListener('click',()=>{libraryFilter=el.dataset.libraryTab;render();}));
+  const profileForm=document.getElementById('profileForm');if(profileForm)profileForm.addEventListener('submit',saveProfile);
   document.querySelectorAll('[data-claim-status]').forEach(el=>el.addEventListener('change',()=>{const c=getProject().claims.find(x=>x.id===el.dataset.claimStatus);c.status=el.value;touchProject();render();}));
   document.querySelectorAll('[data-asset-status]').forEach(el=>el.addEventListener('change',()=>{const a=getProject().assets.find(x=>x.id===el.dataset.assetStatus);a.rights=el.value;touchProject();render();}));
   document.querySelectorAll('[data-check]').forEach(el=>el.addEventListener('change',()=>{const p=getProject(); const item=p.checklist.find(x=>x.id===el.dataset.check);item.done=el.checked;touchProject();render();}));
@@ -297,10 +315,11 @@ document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',
 document.querySelectorAll('.nav-item[data-page]').forEach(b=>b.addEventListener('click',()=>setPage(b.dataset.page)));
 document.getElementById('newProjectBtn').addEventListener('click',()=>document.getElementById('projectDialog').showModal());
 document.getElementById('settingsBtn').addEventListener('click',()=>document.getElementById('settingsDialog').showModal());
+document.getElementById('profileQuickBtn').addEventListener('click',()=>setPage('profile'));
 document.getElementById('aiAssistantBtn').addEventListener('click',()=>{if(!getProject()){setPage('projects');toast('先打开一个创作项目，再使用 AI 助手。');return;}activeProjectTab='draft';render();openAiAssistant();});
 document.getElementById('exportBackup').addEventListener('click',exportAll);
 document.getElementById('importBackup').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());const imported=parsed.data||parsed;if(!Array.isArray(imported.projects))throw new Error('备份格式不正确');state=imported;saveState();render();document.getElementById('settingsDialog').close();toast('备份已导入');}catch(err){toast('无法导入：请检查文件格式。');}e.target.value='';});
-document.getElementById('clearData').addEventListener('click',()=>openConfirmDialog({title:'清空本地全部数据？',description:'此操作无法撤销。建议先导出备份；确认后，当前浏览器中保存的项目和记录都会被删除。',confirmLabel:'清空全部数据',danger:true,onConfirm:()=>{localStorage.removeItem(STORAGE_KEY);state={projects:[],isDemo:false};saveState();render();document.getElementById('settingsDialog').close();toast('本地数据已清空');}}));
+document.getElementById('clearData').addEventListener('click',()=>openConfirmDialog({title:'清空本地全部数据？',description:'此操作无法撤销。建议先导出备份；确认后，当前浏览器中保存的项目和记录都会被删除。',confirmLabel:'清空全部数据',danger:true,onConfirm:()=>{localStorage.removeItem(STORAGE_KEY);state={projects:[],isDemo:false,profile:{...DEFAULT_PROFILE}};saveState();render();document.getElementById('settingsDialog').close();toast('本地数据已清空');}}));
 document.getElementById('searchBtn').addEventListener('click',()=>{document.getElementById('searchDialog').showModal();document.getElementById('searchInput').focus();});
 document.getElementById('searchInput').addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();const results=state.projects.filter(p=>`${p.name} ${p.description}`.toLowerCase().includes(q));document.getElementById('searchResults').innerHTML=q?results.map(p=>`<button class="search-result" data-search-id="${p.id}"><span class="type-mark">${icon(p.type)}</span><span><strong>${escapeHtml(p.name)}</strong><small>${escapeHtml(p.description)}</small></span><b>↗</b></button>`).join('')||'<p class="muted-paragraph">没有找到相关项目</p>':'';document.querySelectorAll('[data-search-id]').forEach(b=>b.addEventListener('click',()=>{document.getElementById('searchDialog').close();openProject(b.dataset.searchId);}));});
 document.getElementById('helpBtn').addEventListener('click',()=>document.getElementById('guideDialog').showModal());

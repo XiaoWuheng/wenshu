@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wenshu-shell-v0.2.1';
+const CACHE_NAME = 'wenshu-shell-v0.2.2';
 const APP_FILES = [
   './',
   './index.html',
