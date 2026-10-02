@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem in 文枢.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请勿附上未公开稿件、个人信息、API 密钥或真实采访对象信息。文枢数据默认保存在本地浏览器。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 遇到了什么问题？
+      description: 简要说明问题和你当时要完成的任务。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 如何复现？
+      description: 请列出复现问题的步骤。
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 看到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你期望发生什么？
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 浏览器和系统
+      placeholder: 例如 Edge 版本、Windows 11
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我确认没有附上私人稿件、个人资料、密钥或未获授权的素材。
+          required: true
