@@ -6,7 +6,7 @@
 
 ![文枢首页：老街茶馆主题编辑插画](assets/tea-house-editorial.webp)
 
-**当前版本：0.1.0 · 可运行的静态网页产品原型。** 无需构建步骤或账号即可体验；项目数据保存在当前浏览器。AI 服务、云同步和多人协作尚未接入。
+**当前版本：0.2.0 · 可独立使用的本地优先创作产品。** 纯静态模式无需账号与构建即可使用；可选 Node 服务提供 AI 辅助。项目数据保存在当前浏览器，云同步和多人协作尚未接入。
 
 ## 你可以用文枢做什么
 
@@ -19,7 +19,7 @@
 - 按创作进度查看下一步建议，并完成发布前检查。
 - 搜索项目、汇总查看资料与素材，导出或导入本地备份。
 
-文枢不会替你认定事实为真、判断素材可以商用或自动代替发布审核。当前 AI 助手入口会说明模型尚未连接，不会发送稿件内容。
+文枢不会替你认定事实为真、判断素材可以商用或自动代替发布审核。AI 辅助默认关闭；启用后，只有你在每次操作中确认的文本会发给你配置的模型服务，结果不会自动加入稿件或被标记为已核验。
 
 ## 开始使用
 
@@ -41,6 +41,29 @@ python3 -m http.server 8000
 
 然后访问 `http://localhost:8000`。也可以使用任意静态文件服务器托管根目录。
 
+## 启用可选 AI 辅助
+
+AI 辅助使用同源 Node 服务代理模型请求，**API 密钥只在服务端 .env 中读取**，不会进入浏览器或 GitHub 仓库。建议使用 Node.js 20 或更高版本：
+
+<pre><code># Windows PowerShell
+Copy-Item .env.example .env
+
+# macOS / Linux
+cp .env.example .env</code></pre>
+
+在 .env 中填写模型服务地址、API 密钥和模型名称，然后启动：
+
+<pre><code>npm start</code></pre>
+
+访问 http://localhost:4173。无需 npm install，服务端只使用 Node 内置模块。示例默认使用 Responses API；OpenAI 兼容服务可设置 WENSHU_AI_API_STYLE=chat-completions。配置项见 .env.example。
+
+每次请求前，创作者需要勾选确认。当前工具只发送任务指令和输入框中的文本，不会自动附带项目名、来源库、稿件其他段落或本地备份。模型结果需主动复制、应用或转为“待核验”条目。
+
+- API 密钥按服务端密钥管理规范保管，绝不要放进前端代码或公开仓库；参见 [OpenAI API 密钥安全说明](https://platform.openai.com/docs/api-reference/authentication)。
+- 如果使用 OpenAI API，API 用量单独计费，ChatGPT 订阅不包含 API 用量；请查看 [ChatGPT 与 API 计费说明](https://help.openai.com/en/articles/6950777-what-is-chatgpt-plus)。其他供应商按其自身价格和数据政策处理。
+- GitHub Pages 只托管静态文件，不能运行 Node AI 服务。要使用 AI，请在本机或自己的 Node 主机运行应用与 API 服务。
+- 默认只监听本机。远程监听必须配置 WENSHU_ACCESS_TOKEN 并放在 HTTPS 反向代理后。当前访问口令是单人自托管保护，不是多用户账号系统；不要把服务直接暴露给公网。
+
 ## 发布到 GitHub Pages
 
 仓库已包含 GitHub Actions 部署工作流。将代码推送到 `main` 分支后，在 GitHub 仓库的 **Settings → Pages** 中选择 **GitHub Actions** 作为发布来源；此后每次推送到 `main` 会自动部署。也可在 **Actions** 页面手动运行部署工作流。
@@ -49,7 +72,7 @@ python3 -m http.server 8000
 
 ## 数据与隐私
 
-- 项目、稿件、资料和素材记录保存在浏览器 `localStorage` 中，不会自动上传到本项目或 AI 服务。
+- 项目、稿件、资料和素材记录保存在浏览器 `localStorage` 中，不会自动上传。只有你确认的 AI 请求文本会由同源 Node 服务转发给你配置的模型供应商。
 - 清除浏览器数据、使用无痕窗口或更换浏览器可能导致记录不可用。请在“设置与数据”中定期导出备份。
 - 本地存储不是加密保险库；不要在共享设备上留下敏感采访资料或未公开稿件。
 - 应用不包含分析、广告或遥测代码。界面字体使用设备本地字体，不请求第三方字体服务。
@@ -67,6 +90,9 @@ styles.css                 响应式界面与视觉样式
 assets/                    品牌标志、应用图标与首页插画
 manifest.webmanifest       可安装 Web 应用元信息
 sw.js                      离线应用外壳缓存
+server.mjs                 静态文件服务器与可选 AI 安全代理
+.env.example               服务端环境变量示例
+package.json               Node 启动脚本（无第三方依赖）
 .github/workflows/         GitHub Pages 自动部署
 .github/ISSUE_TEMPLATE/    缺陷与功能建议模板
 docs/                      产品说明与隐私文档

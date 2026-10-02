@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wenshu-shell-v0.1.0';
+const CACHE_NAME = 'wenshu-shell-v0.2.0';
 const APP_FILES = [
   './',
   './index.html',
@@ -26,7 +26,8 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const request = event.request;
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  const requestUrl = new URL(request.url);
+  if (request.method !== 'GET' || requestUrl.origin !== self.location.origin || requestUrl.pathname.includes('/api/')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(

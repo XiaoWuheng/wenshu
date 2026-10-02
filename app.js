@@ -15,6 +15,8 @@ let projectSort = '最近更新';
 let pendingTemplate = null;
 let toastTimer;
 let actionDialogHandler = null;
+let aiServiceStatus = null;
+let aiSelectionRange = null;
 
 function loadState() {
   try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) return JSON.parse(saved); }
@@ -37,6 +39,122 @@ function escapeHtml(value='') { return String(value).replace(/[&<>"']/g, ch => (
 function getProject(id=activeProjectId) { return state.projects.find(p => p.id === id); }
 function relativeTime(timestamp) { const mins = Math.max(1, Math.floor((Date.now()-timestamp)/60000)); if (mins < 60) return `${mins} 分钟前更新`; const hrs=Math.floor(mins/60); if(hrs<24)return `${hrs} 小时前更新`; return `${Math.floor(hrs/24)} 天前更新`; }
 function toast(message) { const el=document.getElementById('toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2600); }
+
+function getAiAccessToken(){try{return sessionStorage.getItem('wenshu.accessToken')||'';}catch{return '';}}
+function refreshAiAccessToken(value){try{if(value)sessionStorage.setItem('wenshu.accessToken',value);else sessionStorage.removeItem('wenshu.accessToken');return true;}catch{return false;}}
+async function refreshAiStatus() {
+  const text=document.getElementById('aiStatusText'), badge=document.getElementById('aiStatusBadge');
+  if(text)text.textContent='正在检查 AI 服务……';
+  if(badge)badge.textContent='检查中';
+  try {
+    const response=await fetch(new URL('./api/status',location.href),{cache:'no-store'});
+    if(!response.ok)throw new Error('服务未开放状态接口');
+    aiServiceStatus=await response.json();
+    if(text)text.textContent=aiServiceStatus.aiConfigured
+      ? '服务已配置：'+aiServiceStatus.model+'。发送内容会交给此服务端配置的模型供应商处理。'+(aiServiceStatus.authRequired&&!getAiAccessToken()?' 此服务还要求管理员提供访问口令。':'')
+      : '服务已运行，但还没有配置 AI 地址、模型和服务端密钥。核心创作功能仍可照常使用。';
+    if(badge){badge.textContent=aiServiceStatus.aiConfigured?'已配置':'未配置';badge.className='status-pill '+(aiServiceStatus.aiConfigured?'green':'neutral');}
+  } catch {
+    aiServiceStatus=null;
+    if(text)text.textContent='当前页面没有连接文枢 Node 服务。纯静态模式下项目、写作、备份等功能可用；启动本地服务后才可使用 AI。';
+    if(badge){badge.textContent='未连接';badge.className='status-pill neutral';}
+  }
+  return aiServiceStatus;
+}
+function openAiAssistant() {
+  const dialog=document.getElementById('aiDialog'), editor=document.getElementById('draftEditor');
+  const start=editor?.selectionStart??0,end=editor?.selectionEnd??0;
+  const selected=editor&&end>start?editor.value.slice(start,end):'';
+  aiSelectionRange=selected?{start,end,selected}:null;
+  const task=document.getElementById('aiTask');task.value=selected?'rewrite':'outline';
+  const input=document.getElementById('aiInput');input.value=selected;
+  document.getElementById('aiConsent').checked=false;
+  document.getElementById('aiResult').value='';
+  document.getElementById('aiResultBox').hidden=true;
+  document.getElementById('aiCopyResult').hidden=true;
+  document.getElementById('aiApplyResult').hidden=true;
+  document.getElementById('aiUnavailable').hidden=true;
+  document.getElementById('aiSubmit').disabled=!aiServiceStatus?.aiConfigured;
+  document.getElementById('aiSubmit').textContent=aiServiceStatus?.aiConfigured?'确认并生成':'AI 服务未就绪';
+  input.placeholder=selected?'已填入刚才选中的文字；确认后仅这段文字会发送。':'粘贴或写下本次需要模型处理的内容。不会自动发送整篇稿件或项目资料。';
+  document.getElementById('aiCharCount').textContent=input.value.length.toLocaleString()+' / 20,000';
+  syncAiTaskDescription();
+  if(!aiServiceStatus?.aiConfigured){
+    const note=document.getElementById('aiUnavailable');
+    note.textContent='AI 助手需要先启动 Node 服务并在服务端 .env 中配置模型。请查看 README 的“启用可选 AI 辅助”；服务密钥不会放进浏览器。';
+    note.hidden=false;
+  }
+  dialog.showModal();
+}
+function syncAiTaskDescription() {
+  const count=document.getElementById('aiInput')?.value.length||0;
+  const scope=document.getElementById('aiScopeText');
+  if(scope)scope.textContent='仅发送所选任务与上方文字（'+count.toLocaleString()+' 字符）；不发送项目名称、资料库、稿件其他段落或本地备份。';
+  const apply=document.getElementById('aiApplyResult');
+  if(apply)apply.textContent=document.getElementById('aiTask')?.value==='claims'?'加入待核验清单':aiSelectionRange?'替换所选文字':'应用到稿件';
+}
+async function runAiTask(event) {
+  event.preventDefault();
+  const input=document.getElementById('aiInput').value.trim();
+  if(!input)return;
+  if(!aiServiceStatus?.aiConfigured){toast('AI 服务尚未配置。');return;}
+  if(!document.getElementById('aiConsent').checked){toast('请先确认本次发送范围。');return;}
+  const button=document.getElementById('aiSubmit'),task=document.getElementById('aiTask').value;
+  button.disabled=true;button.textContent='正在生成…';
+  document.getElementById('aiUnavailable').hidden=true;
+  document.getElementById('aiResultBox').hidden=true;document.getElementById('aiCopyResult').hidden=true;document.getElementById('aiApplyResult').hidden=true;
+  try {
+    const headers={'Content-Type':'application/json'};
+    const accessToken=getAiAccessToken();
+    if(accessToken)headers.Authorization='Bearer '+accessToken;
+    const response=await fetch(new URL('./api/ai',location.href),{method:'POST',headers,body:JSON.stringify({task,input,consent:true})});
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||'模型请求失败。');
+    document.getElementById('aiResult').value=payload.result||'';
+    document.getElementById('aiResultBox').hidden=false;
+    document.getElementById('aiCopyResult').hidden=false;
+    document.getElementById('aiApplyResult').hidden=false;
+    button.textContent='重新生成';
+    syncAiTaskDescription();
+  } catch(error) {
+    const note=document.getElementById('aiUnavailable');
+    note.textContent='没有生成结果：'+error.message+' 如这是受口令保护的服务，请到“设置与数据”临时填写访问口令。';
+    note.hidden=false;
+  } finally {
+    document.getElementById('aiConsent').checked=false;
+    button.disabled=false;
+    if(button.textContent==='正在生成…')button.textContent='确认并生成';
+  }
+}
+function applyAiResult() {
+  const result=document.getElementById('aiResult').value.trim(),task=document.getElementById('aiTask').value,project=getProject();
+  if(!result||!project)return;
+  if(task==='claims'){
+    const claims=result.split(/\r?\n/).map(line=>line.trim())
+      .filter(line=>/^([-*•]|\d+[.、)])\s*/.test(line))
+      .map(line=>line.replace(/^([-*•]|\d+[.、)])\s*/,'').replace(/^["“]|["”]$/g,'').trim()).filter(Boolean);
+    if(!claims.length){toast('结果中没有识别到编号清单；请检查后复制或重新生成。');return;}
+    project.claims||=[];
+    const existing=new Set(project.claims.map(claim=>claim.text.trim().toLocaleLowerCase()));
+    const added=claims.filter(text=>!existing.has(text.toLocaleLowerCase())).map(text=>({id:uid('claim'),text,status:'待核验',sourceIds:[]}));
+    if(!added.length){toast('这些核验项已存在。');return;}
+    project.claims.unshift(...added);touchProject();activeProjectTab='claims';
+    document.getElementById('aiDialog').close();render();toast('已加入 '+added.length+' 条待核验项；均未标记为已核验。');return;
+  }
+  const editor=document.getElementById('draftEditor');
+  if(!editor){
+    project.drafts||=[];
+    const title=task==='outline'?'建议提纲':task==='headlines'?'标题备选':task==='repurpose'?'平台版本':'AI 建议';
+    project.drafts.unshift({id:uid('draft'),title,channel:'待审阅建议',content:'—— AI 建议（待审阅） ——\n'+result,updatedAt:Date.now()});
+    touchProject();activeProjectTab='draft';document.getElementById('aiDialog').close();render();toast('已创建建议稿件，请逐项审阅后继续编辑。');return;
+  }
+  if(task==='rewrite'&&aiSelectionRange){
+    const range=aiSelectionRange;editor.value=editor.value.slice(0,range.start)+result+editor.value.slice(range.end);
+    editor.setSelectionRange(range.start,range.start+result.length);
+  } else editor.value=editor.value.trimEnd()+'\n\n—— AI 建议（待审阅） ——\n'+result;
+  editor.dispatchEvent(new Event('input',{bubbles:true}));
+  document.getElementById('aiDialog').close();toast('已应用到稿件并保存到本地，请继续审阅。');
+}
 function setPage(page) { activePage=page; activeProjectId=null; render(); document.querySelectorAll('.nav-item[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===page)); }
 function openProject(id) { activeProjectId=id; activeProjectTab='overview'; render(); }
 function icon(type) { return ({'图文文章':'▤','短视频':'▷','播客':'◖','文化项目':'✳','自由创作':'✎'})[type]||'▤'; }
@@ -74,7 +192,7 @@ function projectCard(p) {
 function displayStatus(p){if(p.status==='已归档')return '已归档';if(p.published)return '已发布';if((p.claims||[]).some(c=>c.status!=='已核验'))return '待核验';if((p.assets||[]).some(a=>a.rights==='待确认'))return '待确认授权';if(!(p.drafts||[]).length)return '准备中';return '创作中';}
 function emptyProjects() { return `<button class="empty-project" data-action="new-project"><span>＋</span><strong>从一个想法开始</strong><small>创建你的第一个创作项目</small></button>`; }
 function renderProjects(root) { const filtered=state.projects.filter(p=>projectFilter==='全部'||(projectFilter==='已归档'?p.status==='已归档':projectFilter==='待核验'?(p.claims||[]).some(c=>c.status!=='已核验'):p.status!=='已归档'&&!p.published));const ordered=filtered.slice().sort((a,b)=>projectSort==='名称'?a.name.localeCompare(b.name,'zh-CN'):projectSort==='创建时间'?(a.createdAt||a.updatedAt)-(b.createdAt||b.updatedAt):b.updatedAt-a.updatedAt);const counts={'全部':state.projects.length,'进行中':state.projects.filter(p=>p.status!=='已归档'&&!p.published).length,'待核验':state.projects.filter(p=>(p.claims||[]).some(c=>c.status!=='已核验')).length,'已归档':state.projects.filter(p=>p.status==='已归档').length};root.innerHTML=`<div class="subpage"><div class="page-heading"><div><div class="eyebrow">工作空间</div><h1>我的项目</h1><p>为正在创作的内容保留一个清楚、可追溯的工作空间。</p></div><button class="button primary" data-action="new-project">＋ 新建项目</button></div><div class="filter-row"><div class="segmented">${Object.entries(counts).map(([label,count])=>`<button class="${projectFilter===label?'selected':''}" data-project-filter="${label}">${label}<span>${count}</span></button>`).join('')}</div><label class="sort-select">排序<select data-project-sort><option ${projectSort==='最近更新'?'selected':''}>最近更新</option><option ${projectSort==='名称'?'selected':''}>名称</option><option ${projectSort==='创建时间'?'selected':''}>创建时间</option></select></label></div><div class="project-grid full-grid">${ordered.length?ordered.map(projectCard).join(''):`<div class="empty-state project-empty"><span>▤</span><strong>${projectFilter==='全部'?'还没有项目':'没有符合条件的项目'}</strong><p>${projectFilter==='全部'?'从一个选题、脚本或内容计划开始。':'试试其他项目状态。'}</p>${projectFilter==='全部'?'<button class="button secondary" data-action="new-project">创建第一个项目</button>':''}</div>`}</div></div>`; }
-function renderLibrary(root) { const assets=state.projects.flatMap(p=>(p.assets||[]).map(a=>({...a,projectName:p.name,projectId:p.id}))); const sources=state.projects.flatMap(p=>(p.sources||[]).map(s=>({...s,projectName:p.name,projectId:p.id}))); root.innerHTML=`<div class="subpage"><div class="page-heading"><div><div class="eyebrow">素材档案</div><h1>素材与来源</h1><p>把每一份素材的来处、授权和用途记录清楚。</p></div><button class="button primary" data-action="library-add">＋ 选择项目添加</button></div><div class="library-tabs"><button class="selected" data-library-tab="all">全部 <span>${assets.length+sources.length}</span></button><button data-library-tab="assets">素材 <span>${assets.length}</span></button><button data-library-tab="sources">资料来源 <span>${sources.length}</span></button></div><div class="library-list" id="libraryList">${[...assets.map(a=>({kind:'素材',title:a.name,detail:`${a.projectName} · ${a.kind} · ${a.source||'来源待补'}`,status:a.rights==='待确认'?'授权待确认':a.rights,projectId:a.projectId})),...sources.map(s=>({kind:'资料',title:s.title,detail:`${s.projectName} · ${s.type} · ${s.url||'未添加链接'}`,status:'已收录',projectId:s.projectId}))].map(item=>`<button class="library-row" data-action="open-project" data-id="${item.projectId}"><span class="library-kind">${item.kind==='素材'?'◈':'▧'}</span><span class="library-main"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span><span class="status-pill ${item.status==='授权待确认'?'amber':'neutral'}">${escapeHtml(item.status)}</span><span class="card-arrow">↗</span></button>`).join('')||`<div class="empty-state"><span>▧</span><strong>这里还没有素材</strong><p>在项目中添加资料和素材后，它们会汇集于此。</p><button class="button secondary" data-action="go-projects">查看项目</button></div>`}</div></div>`; }
+function renderLibrary(root){const allAssets=state.projects.flatMap(p=>(p.assets||[]).map(a=>({...a,projectName:p.name,projectId:p.id,kind:'素材'})));const allSources=state.projects.flatMap(p=>(p.sources||[]).map(s=>({...s,projectName:p.name,projectId:p.id,kind:'资料来源'})));const items=libraryFilter==='素材'?allAssets:libraryFilter==='资料来源'?allSources:[...allAssets,...allSources];root.innerHTML=`<div class="subpage"><div class="page-heading"><div><div class="eyebrow">素材档案</div><h1>素材与来源</h1><p>跨项目查看资料、素材和授权状态；每条记录都可以回到所属项目。</p></div><button class="button primary" data-action="library-add">＋ 添加记录</button></div><div class="library-toolbar"><div class="library-tabs">${[['全部',allAssets.length+allSources.length],['素材',allAssets.length],['资料来源',allSources.length]].map(([label,count])=>`<button class="${libraryFilter===label?'selected':''}" data-library-tab="${label}">${label}<span>${count}</span></button>`).join('')}</div><span class="library-help">共 ${items.length} 条记录</span></div><div class="library-list">${items.length?items.map(item=>`<button class="library-row" data-action="open-record" data-id="${item.projectId}" data-kind="${item.kind}"><span class="library-kind">${item.kind==='素材'?'◈':'▧'}</span><span class="library-main"><strong>${escapeHtml(item.title||item.name)}</strong><small>${escapeHtml(item.projectName)} · ${escapeHtml(item.type||item.kind||'')} · ${escapeHtml(item.url||item.source||'来源待补')}</small></span><span class="status-pill ${item.kind==='素材'&&item.rights==='待确认'?'amber':'neutral'}">${escapeHtml(item.kind==='素材'?item.rights||'状态待补':'已收录')}</span><span class="card-arrow">↗</span></button>`).join(''):`<div class="empty-state"><span>${libraryFilter==='素材'?'◈':'▧'}</span><strong>${libraryFilter==='全部'?'还没有资料或素材':`还没有${libraryFilter}`}</strong><p>在创作项目中添加记录后，这里会自动汇总。</p><button class="button secondary" data-action="library-add">选择项目添加</button></div>`}</div></div>`;}
 function renderTemplates(root) { const templates=[['采访报道','从采访提纲到事实核验，适合人物与现场报道。','✎'],['短视频脚本','梳理开场、段落、画面与发布文案。','▷'],['播客单集','整理节目结构、嘉宾资料与声音素材授权。','◖'],['文化活动记录','记录活动信息、引用来源与影像授权。','✳']]; root.innerHTML=`<div class="subpage"><div class="page-heading"><div><div class="eyebrow">创作方式</div><h1>创作模板</h1><p>从一套合适的结构开始，再写出自己的东西。</p></div></div><div class="template-grid">${templates.map((t,i)=>`<article class="template-card"><span class="template-icon">${t[2]}</span><span class="template-number">0${i+1}</span><h3>${t[0]}</h3><p>${t[1]}</p><button class="text-link" data-action="template-create" data-type="${t[0]}">用这个模板 <span>→</span></button></article>`).join('')}</div><div class="template-note"><span>✦</span><p>模板只提供起步结构。内容、判断和最后的表达，始终由你决定。</p></div></div>`; }
 
 function renderProject(root,p) {
@@ -99,7 +217,7 @@ function recommendedStep(p) {
   return `<div class="overview-layout"><div class="overview-main"><section class="workflow-card"><div class="section-heading inline-heading"><div><div class="eyebrow">创作进度</div><h2>创作进度</h2></div><span class="muted-small">${steps.filter(x=>x[1]).length} / ${steps.length} 步</span></div><div class="workflow-steps">${steps.map((s,i)=>`<button class="workflow-step ${s[1]?'done':''}" data-tab="${['sources','draft','claims','assets','publish'][i]}"><span class="step-circle">${s[1]?'✓':String(i+1).padStart(2,'0')}</span><span>${s[0]}</span>${i<steps.length-1?'<i class="step-line"></i>':''}</button>`).join('')}</div></section><section class="next-step-card"><div class="next-step-copy"><div class="eyebrow">编辑建议 · 推荐下一步</div><h3>${escapeHtml(nextStep.title)}</h3><p>${escapeHtml(nextStep.detail)}</p></div><button class="button primary" ${nextStep.action?`data-action="${nextStep.action}" data-id="${p.id}"`:`data-tab="${nextStep.tab}"`}>${escapeHtml(nextStep.cta)} <span>→</span></button></section><section class="overview-section"><div class="section-heading inline-heading"><div><div class="eyebrow">待处理</div><h2>接下来</h2></div><span class="muted-small">${todo.length} 项待处理</span></div>${todo.length?`<div class="todo-list">${todo.slice(0,4).map(t=>`<button class="todo-row" data-tab="${t.tab}"><span class="todo-icon">${t.icon}</span><span class="todo-copy"><strong>${escapeHtml(t.title)}</strong><small>${t.meta}</small></span><span class="card-arrow">→</span></button>`).join('')}</div>`:`<div class="calm-empty"><span>✦</span><div><strong>眼下没有待办</strong><p>需要处理的事情会在这里出现。</p></div></div>`}</section><section class="overview-section"><div class="section-heading inline-heading"><div><div class="eyebrow">最近更新</div><h2>最近更新</h2></div></div>${drafts.length?`<button class="recent-draft" data-tab="draft"><span class="draft-icon">▤</span><span><strong>${escapeHtml(drafts[0].title)}</strong><small>${relativeTime(drafts[0].updatedAt||p.updatedAt)}</small></span><span class="card-arrow">↗</span></button>`:`<div class="calm-empty"><span>✎</span><div><strong>还没有创作内容</strong><p>先记下一段想法，后续可以慢慢打磨。</p></div><button class="button secondary" data-tab="draft">开始写作</button></div>`}</section></div><aside class="overview-aside"><div class="aside-card"><div class="aside-card-title"><span>项目一览</span><span class="tiny-seal">枢</span></div><div class="overview-number"><strong>${sources.length}</strong><span>资料来源</span></div><div class="overview-number"><strong>${claims.length}</strong><span>核验事项</span></div><div class="overview-number"><strong>${assets.length}</strong><span>素材记录</span></div><div class="aside-divider"></div><div class="last-updated"><span class="online-dot"></span>最近更新 ${relativeTime(p.updatedAt)}</div></div><div class="aside-tip"><span class="tip-spark">✦</span><strong>文枢小笺</strong><p>先把来源记下来，写作时就不必回头寻找。每个事实都可以关联一条或多条资料。</p></div></aside></div>`;
 }
 function sourcesView(p) { return `<div class="tab-content"><div class="tab-title-row"><div><div class="eyebrow">资料整理</div><h2>资料来源</h2><p>记录链接、采访、文件和灵感笔记，为创作留下来路。</p></div><button class="button primary" data-action="add-source">＋ 添加资料</button></div><div class="add-inline-panel" id="sourceFormPanel" hidden><form id="sourceForm" class="inline-form"><div class="form-grid"><label>资料标题<input name="title" class="text-input" placeholder="例如：区志中的街区沿革" required></label><label>资料类型<select name="type" class="text-input"><option>网页链接</option><option>采访记录</option><option>文件资料</option><option>个人笔记</option><option>引用摘录</option></select></label><label class="wide-field">链接或来源说明<input name="url" class="text-input" placeholder="粘贴网址，或写明资料出处"></label><label class="wide-field">备注<textarea name="notes" class="text-input" rows="2" placeholder="记录哪些信息值得回查"></textarea></label></div><div class="form-actions"><button type="button" class="button secondary" data-action="cancel-source">取消</button><button class="button primary">保存资料</button></div></form></div>${p.sources.length?`<div class="record-list">${p.sources.map(s=>`<article class="record-card"><span class="record-icon">▧</span><div class="record-main"><strong>${escapeHtml(s.title)}</strong><div class="record-meta"><span>${escapeHtml(s.type)}</span><span>·</span><span>${escapeHtml(s.url||'未添加链接')}</span></div>${s.notes?`<p>${escapeHtml(s.notes)}</p>`:''}</div><button class="record-more" data-action="delete-source" data-id="${s.id}">删除</button></article>`).join('')}</div>`:`<div class="empty-state large-empty"><span>▧</span><strong>从资料开始，让创作有根有据</strong><p>可以先添加一条网页链接、一段采访记录，或一份个人笔记。</p><button class="button secondary" data-action="add-source">添加第一条资料</button></div>`}</div>`; }
-function draftView(p) { const drafts=p.drafts||[]; const current=drafts[0]; return `<div class="draft-workspace"><div class="draft-sidebar"><div class="draft-sidebar-head"><span class="eyebrow">稿件</span><button class="small-add" data-action="new-draft">＋</button></div>${drafts.map(d=>`<button class="draft-list-item ${current?.id===d.id?'selected':''}" data-draft="${d.id}"><span class="draft-list-icon">▤</span><span><strong>${escapeHtml(d.title)}</strong><small>${escapeHtml(d.channel||'主稿')}</small></span></button>`).join('')||`<p class="draft-sidebar-empty">还没有稿件</p>`}</div><div class="editor-panel">${current?`<div class="editor-toolbar"><div><span class="save-dot"></span><span>自动保存</span><span class="toolbar-divider">|</span><span>${current.content.length} 字</span></div><div><button class="editor-action" data-action="ai-assist">✦ AI 辅助</button><button class="editor-action" data-action="export-draft">↓ 导出</button></div></div><input class="draft-title-input" id="draftTitle" value="${escapeHtml(current.title)}" aria-label="稿件标题"><textarea class="draft-editor" id="draftEditor" placeholder="从一句话开始……">${escapeHtml(current.content)}</textarea><div class="editor-footer"><span>✦ 内容保存在当前浏览器</span><span>选中文字可添加为核验事项</span><button class="button secondary small-button" data-action="selected-to-claim">将选中内容加入核验 →</button></div>`:`<div class="empty-state editor-empty"><span>✎</span><strong>写下第一段内容</strong><p>从一个观察、一句采访或一个问题开始。</p><button class="button primary" data-action="new-draft">新建稿件</button></div>`}</div><aside class="editor-aside"><div class="aside-card"><div class="aside-card-title"><span>写作时可参考</span><span class="tiny-seal">据</span></div><div class="reference-count">${p.sources.length} <small>条资料</small></div>${p.sources.slice(0,4).map(s=>`<button class="reference-item" data-tab="sources"><span>▧</span><span>${escapeHtml(s.title)}</span><b>↗</b></button>`).join('')||`<p class="muted-paragraph">添加资料后，可以在写作时快速查阅。</p>`}<button class="text-link" data-tab="sources">管理资料 <span>→</span></button></div><div class="aside-tip"><span class="tip-spark">✦</span><strong>AI 辅助尚未连接</strong><p>当前原型不会向外部 AI 服务发送你的内容。连接服务后，每次调用前都会让你确认发送范围。</p></div></aside></div>`; }
+function draftView(p) { const drafts=p.drafts||[]; const current=drafts[0]; return `<div class="draft-workspace"><div class="draft-sidebar"><div class="draft-sidebar-head"><span class="eyebrow">稿件</span><button class="small-add" data-action="new-draft">＋</button></div>${drafts.map(d=>`<button class="draft-list-item ${current?.id===d.id?'selected':''}" data-draft="${d.id}"><span class="draft-list-icon">▤</span><span><strong>${escapeHtml(d.title)}</strong><small>${escapeHtml(d.channel||'主稿')}</small></span></button>`).join('')||`<p class="draft-sidebar-empty">还没有稿件</p>`}</div><div class="editor-panel">${current?`<div class="editor-toolbar"><div><span class="save-dot"></span><span>自动保存</span><span class="toolbar-divider">|</span><span>${current.content.length} 字</span></div><div><button class="editor-action" data-action="ai-assist">✦ AI 辅助</button><button class="editor-action" data-action="export-draft">↓ 导出</button></div></div><input class="draft-title-input" id="draftTitle" value="${escapeHtml(current.title)}" aria-label="稿件标题"><textarea class="draft-editor" id="draftEditor" placeholder="从一句话开始……">${escapeHtml(current.content)}</textarea><div class="editor-footer"><span>✦ 内容保存在当前浏览器</span><span>选中文字可添加为核验事项</span><button class="button secondary small-button" data-action="selected-to-claim">将选中内容加入核验 →</button></div>`:`<div class="empty-state editor-empty"><span>✎</span><strong>写下第一段内容</strong><p>从一个观察、一句采访或一个问题开始。</p><button class="button primary" data-action="new-draft">新建稿件</button></div>`}</div><aside class="editor-aside"><div class="aside-card"><div class="aside-card-title"><span>写作时可参考</span><span class="tiny-seal">据</span></div><div class="reference-count">${p.sources.length} <small>条资料</small></div>${p.sources.slice(0,4).map(s=>`<button class="reference-item" data-tab="sources"><span>▧</span><span>${escapeHtml(s.title)}</span><b>↗</b></button>`).join('')||`<p class="muted-paragraph">添加资料后，可以在写作时快速查阅。</p>`}<button class="text-link" data-tab="sources">管理资料 <span>→</span></button></div><div class="aside-tip"><span class="tip-spark">✦</span><strong>可选 AI 创作辅助</strong><p>仅在本次确认后发送你填写的文字；模型建议需由你审阅并主动采纳。</p></div></aside></div>`; }
 function claimsView(p) { return `<div class="tab-content"><div class="tab-title-row"><div><div class="eyebrow">编辑台</div><h2>事实核验</h2><p>把具体说法与来源关联起来。核验结论由你确认。</p></div><button class="button primary" data-action="add-claim">＋ 添加核验项</button></div>${p.claims.length?`<div class="claim-list">${p.claims.map(c=>{const linked=(c.sourceIds||[]).map(id=>p.sources.find(s=>s.id===id)).filter(Boolean);return `<article class="claim-card"><div class="claim-card-top"><span class="status-pill ${c.status==='已核验'?'green':c.status==='已找到来源'?'blue':'amber'}"><i></i>${escapeHtml(c.status)}</span><button class="record-more" data-action="delete-claim" data-id="${c.id}">删除</button></div><p class="claim-text">“${escapeHtml(c.text)}”</p>${linked.length?`<div class="claim-linked">${linked.map(s=>`<span>▧ ${escapeHtml(s.title)}</span>`).join('')}</div>`:`<div class="claim-unlinked">尚未关联资料来源</div>`}<div class="claim-bottom"><span>${linked.length} 条关联资料</span><div><select class="claim-status-select" data-claim-status="${c.id}"><option ${c.status==='待核验'?'selected':''}>待核验</option><option ${c.status==='已找到来源'?'selected':''}>已找到来源</option><option ${c.status==='已核验'?'selected':''}>已核验</option><option ${c.status==='存在冲突'?'selected':''}>存在冲突</option><option ${c.status==='需要改写'?'selected':''}>需要改写</option></select><button class="text-link compact" data-action="link-source" data-id="${c.id}">关联资料 →</button></div></div></article>`;}).join('')}</div>`:`<div class="empty-state large-empty"><span>◌</span><strong>把需要核对的说法放在这里</strong><p>例如具体日期、数字、引语、人名和历史信息。</p><button class="button secondary" data-action="add-claim">添加第一项</button></div>`}<div class="note-box"><span>ⓘ</span> 文枢只帮助你整理核验过程，不会自动判断内容为真。</div></div>`; }
 function assetsView(p) { return `<div class="tab-content"><div class="tab-title-row"><div><div class="eyebrow">项目档案</div><h2>素材与授权</h2><p>记录图片、音乐、字体、引文等素材的来源和使用条件。</p></div><button class="button primary" data-action="add-asset">＋ 添加素材</button></div>${p.assets.length?`<div class="asset-table"><div class="asset-table-head"><span>素材</span><span>来源与用途</span><span>授权状态</span><span></span></div>${p.assets.map(a=>`<div class="asset-row"><div class="asset-name"><span class="asset-icon">${a.kind==='音乐'?'♫':a.kind==='视频'?'▷':'▧'}</span><strong>${escapeHtml(a.name)}</strong></div><div class="asset-origin"><span>${escapeHtml(a.source||'来源待补')}</span><small>${escapeHtml(a.location||'使用位置未填')}</small><small>${escapeHtml(a.credit?`署名：${a.credit}`:'署名未记录')}</small></div><div><select class="asset-status-select ${a.rights==='待确认'?'pending':''}" data-asset-status="${a.id}"><option ${a.rights==='待确认'?'selected':''}>待确认</option><option ${a.rights==='已取得授权'?'selected':''}>已取得授权</option><option ${a.rights==='自己创作'?'selected':''}>自己创作</option><option ${a.rights==='开放许可'?'selected':''}>开放许可</option><option ${a.rights==='不用于当前项目'?'selected':''}>不用于当前项目</option></select></div><button class="record-more" data-action="delete-asset" data-id="${a.id}">删除</button></div>`).join('')}</div>`:`<div class="empty-state large-empty"><span>◈</span><strong>素材也有自己的来处</strong><p>记录来源、授权范围、署名要求和使用位置。</p><button class="button secondary" data-action="add-asset">添加第一项素材</button></div>`}<div class="note-box"><span>ⓘ</span> 请根据权利人或授权文件确认使用条件。文枢不会自动判断素材可否商用。</div></div>`; }
 function publishView(p) { const defaults=[['事实与引用已有来源或核验记录','claim'],['素材来源与授权状态已确认','asset'],['署名要求已记录','credit'],['AI 辅助内容已人工检查','ai'],['隐私与敏感信息已检查','privacy'],['标题、简介和封面已准备','packaging']]; if(!p.checklist||p.checklist.length===0)p.checklist=defaults.map(x=>({id:uid('check'),label:x[0],done:false})); return `<div class="tab-content"><div class="tab-title-row"><div><div class="eyebrow">发布准备</div><h2>发布前检查</h2><p>逐项确认发布准备情况。所有勾选均由你确认。</p></div><button class="button secondary" data-action="export-project" data-id="${p.id}">↓ 导出发布包</button></div><div class="publish-summary"><div class="publish-progress"><span class="progress-ring" style="--progress:${Math.round(p.checklist.filter(x=>x.done).length/p.checklist.length*100)}%"><b>${p.checklist.filter(x=>x.done).length}<small>/${p.checklist.length}</small></b></span><div><strong>${p.checklist.every(x=>x.done)?'检查完成':'完成发布前检查'}</strong><p>${p.checklist.filter(x=>!x.done).length?`还有 ${p.checklist.filter(x=>!x.done).length} 项待确认。`:'你已完成所有清单项，可以导出项目材料。'}</p></div></div></div><div class="checklist">${p.checklist.map(c=>`<label class="checklist-row ${c.done?'checked':''}"><input type="checkbox" data-check="${c.id}" ${c.done?'checked':''}><span class="custom-check">${c.done?'✓':''}</span><span>${escapeHtml(c.label)}</span><small>${c.done?'已确认':'待确认'}</small></label>`).join('')}</div><div class="note-box"><span>ⓘ</span> 完成清单不等于法律或事实认证。发布责任仍由创作者和发布方承担。</div></div>`; }
@@ -148,7 +266,7 @@ function handleAction(e) {
   if(action==='delete-asset')openConfirmDialog({title:'删除这条素材记录？',description:'这只会删除文枢中的记录，不会影响原始素材文件。',confirmLabel:'删除记录',danger:true,onConfirm:()=>{const p=getProject();p.assets=p.assets.filter(x=>x.id!==id);touchProject();render();}});
   if(action==='link-source')linkSource(id);
   if(action==='selected-to-claim')selectedToClaim();
-  if(action==='ai-assist')toast('AI 服务尚未连接。你的内容不会被发送。');
+  if(action==='ai-assist')openAiAssistant();
   if(action==='export-draft')exportDraft();
   if(action==='export-project')exportProject(id);
   if(action==='template-create'){openNewProject(el.dataset.type);}
@@ -185,10 +303,20 @@ document.getElementById('clearData').addEventListener('click',()=>openConfirmDia
 document.getElementById('searchBtn').addEventListener('click',()=>{document.getElementById('searchDialog').showModal();document.getElementById('searchInput').focus();});
 document.getElementById('searchInput').addEventListener('input',e=>{const q=e.target.value.trim().toLowerCase();const results=state.projects.filter(p=>`${p.name} ${p.description}`.toLowerCase().includes(q));document.getElementById('searchResults').innerHTML=q?results.map(p=>`<button class="search-result" data-search-id="${p.id}"><span class="type-mark">${icon(p.type)}</span><span><strong>${escapeHtml(p.name)}</strong><small>${escapeHtml(p.description)}</small></span><b>↗</b></button>`).join('')||'<p class="muted-paragraph">没有找到相关项目</p>':'';document.querySelectorAll('[data-search-id]').forEach(b=>b.addEventListener('click',()=>{document.getElementById('searchDialog').close();openProject(b.dataset.searchId);}));});
 document.getElementById('helpBtn').addEventListener('click',()=>document.getElementById('guideDialog').showModal());
+document.querySelectorAll('[data-close-ai]').forEach(button=>button.addEventListener('click',()=>document.getElementById('aiDialog').close()));
+document.getElementById('aiAssistantForm').addEventListener('submit',runAiTask);
+document.getElementById('aiTask').addEventListener('change',syncAiTaskDescription);
+document.getElementById('aiInput').addEventListener('input',()=>{document.getElementById('aiCharCount').textContent=document.getElementById('aiInput').value.length.toLocaleString()+' / 20,000';syncAiTaskDescription();});
+document.getElementById('aiCopyResult').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(document.getElementById('aiResult').value);toast('建议已复制。');}catch{toast('浏览器未允许复制，请手动选择结果文本。');}});
+document.getElementById('aiApplyResult').addEventListener('click',applyAiResult);
+document.getElementById('saveAiAccessToken').addEventListener('click',()=>{const value=document.getElementById('aiAccessToken').value.trim();if(!refreshAiAccessToken(value)){toast('当前浏览器无法临时保存口令。');return;}toast(value?'口令已临时保存在当前标签页。':'已清除访问口令。');refreshAiStatus();});
+document.getElementById('clearAiAccessToken').addEventListener('click',()=>{refreshAiAccessToken('');document.getElementById('aiAccessToken').value='';toast('访问口令已清除。');refreshAiStatus();});
+document.getElementById('refreshAiStatus').addEventListener('click',refreshAiStatus);
+
 document.querySelectorAll('[data-close-guide]').forEach(button=>button.addEventListener('click',()=>document.getElementById('guideDialog').close()));
 document.getElementById('guideDialog').addEventListener('click',event=>{if(event.target===event.currentTarget)event.currentTarget.close();});
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();document.getElementById('searchDialog').showModal();document.getElementById('searchInput').focus();}});
-function renderLibrary(root){const allAssets=state.projects.flatMap(p=>(p.assets||[]).map(a=>({...a,projectName:p.name,projectId:p.id,kind:'素材'})));const allSources=state.projects.flatMap(p=>(p.sources||[]).map(s=>({...s,projectName:p.name,projectId:p.id,kind:'资料来源'})));const items=libraryFilter==='素材'?allAssets:libraryFilter==='资料来源'?allSources:[...allAssets,...allSources];root.innerHTML=`<div class="subpage"><div class="page-heading"><div><div class="eyebrow">素材档案</div><h1>素材与来源</h1><p>跨项目查看资料、素材和授权状态；每条记录都可以回到所属项目。</p></div><button class="button primary" data-action="library-add">＋ 添加记录</button></div><div class="library-toolbar"><div class="library-tabs">${[['全部',allAssets.length+allSources.length],['素材',allAssets.length],['资料来源',allSources.length]].map(([label,count])=>`<button class="${libraryFilter===label?'selected':''}" data-library-tab="${label}">${label}<span>${count}</span></button>`).join('')}</div><span class="library-help">共 ${items.length} 条记录</span></div><div class="library-list">${items.length?items.map(item=>`<button class="library-row" data-action="open-record" data-id="${item.projectId}" data-kind="${item.kind}"><span class="library-kind">${item.kind==='素材'?'◈':'▧'}</span><span class="library-main"><strong>${escapeHtml(item.title||item.name)}</strong><small>${escapeHtml(item.projectName)} · ${escapeHtml(item.type||item.kind||'')} · ${escapeHtml(item.url||item.source||'来源待补')}</small></span><span class="status-pill ${item.kind==='素材'&&item.rights==='待确认'?'amber':'neutral'}">${escapeHtml(item.kind==='素材'?item.rights||'状态待补':'已收录')}</span><span class="card-arrow">↗</span></button>`).join(''):`<div class="empty-state"><span>${libraryFilter==='素材'?'◈':'▧'}</span><strong>${libraryFilter==='全部'?'还没有资料或素材':`还没有${libraryFilter}`}</strong><p>在创作项目中添加记录后，这里会自动汇总。</p><button class="button secondary" data-action="library-add">选择项目添加</button></div>`}</div></div>`;}
+
 render();
 
 
@@ -198,4 +326,5 @@ render();
 
 
 
+refreshAiStatus();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
