@@ -297,6 +297,7 @@ document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',
 document.querySelectorAll('.nav-item[data-page]').forEach(b=>b.addEventListener('click',()=>setPage(b.dataset.page)));
 document.getElementById('newProjectBtn').addEventListener('click',()=>document.getElementById('projectDialog').showModal());
 document.getElementById('settingsBtn').addEventListener('click',()=>document.getElementById('settingsDialog').showModal());
+document.getElementById('aiAssistantBtn').addEventListener('click',()=>{if(!getProject()){setPage('projects');toast('先打开一个创作项目，再使用 AI 助手。');return;}activeProjectTab='draft';render();openAiAssistant();});
 document.getElementById('exportBackup').addEventListener('click',exportAll);
 document.getElementById('importBackup').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());const imported=parsed.data||parsed;if(!Array.isArray(imported.projects))throw new Error('备份格式不正确');state=imported;saveState();render();document.getElementById('settingsDialog').close();toast('备份已导入');}catch(err){toast('无法导入：请检查文件格式。');}e.target.value='';});
 document.getElementById('clearData').addEventListener('click',()=>openConfirmDialog({title:'清空本地全部数据？',description:'此操作无法撤销。建议先导出备份；确认后，当前浏览器中保存的项目和记录都会被删除。',confirmLabel:'清空全部数据',danger:true,onConfirm:()=>{localStorage.removeItem(STORAGE_KEY);state={projects:[],isDemo:false};saveState();render();document.getElementById('settingsDialog').close();toast('本地数据已清空');}}));
